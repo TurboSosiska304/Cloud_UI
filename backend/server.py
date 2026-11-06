@@ -12,7 +12,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
-from executor import (Executor, MODELS, UPSCALERS, OUT, WORKFLOWS, ROOT)
+from executor import (Executor, MODELS, UPSCALERS, TEXT_ENCODERS, VAES,
+                      DEFAULT_SETTINGS, OUT, WORKFLOWS, ROOT)
 
 HOST = os.environ.get("CLOUD_UI_HOST", "127.0.0.1")
 PORT = int(os.environ.get("CLOUD_UI_PORT", "8188"))
@@ -87,13 +88,28 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/config":
                 return self.send_json({
                     "models": {k: {"label": v["label"], "steps": v["steps"],
-                                   "cfg": v["cfg"], "family": v["family"]}
+                                   "cfg": v["cfg"], "family": v["family"],
+                                   "default_te": v.get("default_te"),
+                                   "default_vae": v.get("default_vae")}
                                for k, v in MODELS.items()},
+                    "text_encoders": {k: v[0] for k, v in TEXT_ENCODERS.items()},
+                    "vaes": {k: v[0] for k, v in VAES.items()},
                     "upscalers": list(UPSCALERS),
+                    "defaults": DEFAULT_SETTINGS,
                 })
             if p == "/api/jobs":
                 jobs = sorted(executor.jobs.values(), key=lambda j: j.created, reverse=True)
                 return self.send_json([j.public() for j in jobs[:100]])
+            m = re.fullmatch(r"/api/jobs/([a-f0-9]+)/log", p)
+            if m:
+                job = executor.jobs.get(m.group(1))
+                if not job:
+                    return self.send_json({"error": "job not found"}, 404)
+                since = int((q.get("since") or ["0"])[0])
+                since = max(0, min(since, len(job.log)))
+                lines = job.log[since:since + 2000]
+                return self.send_json({"lines": lines, "next": since + len(lines),
+                                       "total": len(job.log)})
             m = re.fullmatch(r"/api/jobs/([a-f0-9]+)", p)
             if m:
                 job = executor.jobs.get(m.group(1))

@@ -7,7 +7,7 @@ import re
 import shutil
 import signal
 import subprocess
-import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -22,58 +22,62 @@ JOBS = ROOT / "jobs"
 for d in (OUT, WORKFLOWS, JOBS):
     d.mkdir(parents=True, exist_ok=True)
 
+TEXT_ENCODERS = {
+    "qwen3-4b": ("Qwen3-4B (FLUX.2, Z-Image)", str(M / "text_encoders/qwen3/Qwen3-4B-Q4_K_M.gguf")),
+    "qwen3-8b": ("Qwen3-8B (FLUX.2 9B)", str(M / "text_encoders/qwen3/Qwen3-8B-Q4_K_S.gguf")),
+    "qwen3-vl-4b": ("Qwen3-VL-4B (FLUX.3)", str(M / "text_encoders/qwen3/Qwen3-VL-4B-Instruct-GGUF/Qwen3-VL-4B-Instruct-Q4_K_M.gguf")),
+    "qwen3-0.6b": ("Qwen3-0.6B (Anima)", str(M / "text_encoders/qwen3/qwen_3_06b_base.safetensors")),
+    "umt5-xxl": ("UMT5-XXL (Wan)", str(M / "text_encoders/t5/umt5-xxl-encoder-Q4_K_M.gguf")),
+    "t5xxl-fp8": ("T5-XXL fp8", str(M / "text_encoders/t5/t5xxl_fp8_e4m3fn.safetensors")),
+    "clip-l": ("CLIP-L", str(M / "text_encoders/clip/clip_l.safetensors")),
+}
+
+VAES = {
+    "flux2": ("FLUX.2 VAE (FLUX.2/FLUX.3)", str(M / "vae/flux2-vae.safetensors")),
+    "flux1-ae": ("FLUX.1 AE (Z-Image)", str(M / "vae/ae.safetensors")),
+    "qwen-image": ("Qwen-Image VAE (Anima)", str(M / "vae/qwen_image_vae.safetensors")),
+    "wan22": ("Wan 2.2 VAE", str(M / "vae/Wan2.2_VAE.safetensors")),
+    "sd15": ("SD1.5 VAE", str(M / "vae/vae-ft-mse-840000-ema-pruned.safetensors")),
+    "pixart": ("PixArt VAE", str(M / "vae/pixart_sigma_vae_fp16.safetensors")),
+    "hunyuan-video": ("Hunyuan Video VAE", str(M / "vae/hunyuan_video_vae_bf16.safetensors")),
+}
+
 MODELS = {
     "flux2-4b": {
         "label": "FLUX.2 klein 4B (fast)",
         "diffusion": str(M / "diffusion_models/flux2/flux-2-klein-4b-Q4_K_M.gguf"),
-        "vae": str(M / "vae/flux2-vae.safetensors"),
-        "llm": str(M / "text_encoders/qwen3/Qwen3-4B-Q4_K_M.gguf"),
+        "default_te": "qwen3-4b", "default_vae": "flux2",
         "steps": 4, "cfg": 1.0, "family": "flux2",
-        "backend": [],
     },
     "flux2-9b": {
         "label": "FLUX.2 klein 9B (quality)",
         "diffusion": str(M / "diffusion_models/flux2/flux-2-klein-9b-Q4_K_S.gguf"),
-        "vae": str(M / "vae/flux2-vae.safetensors"),
-        "llm": str(M / "text_encoders/qwen3/Qwen3-8B-Q4_K_S.gguf"),
+        "default_te": "qwen3-8b", "default_vae": "flux2",
         "steps": 4, "cfg": 1.0, "family": "flux2",
-        "backend": ["--backend", "te=vulkan0,diffusion=vulkan0,vae=vulkan0",
-                    "--params-backend", "te=cpu,diffusion=vulkan0,vae=cpu"],
     },
     "flux3": {
-        "label": "FLUX.3 Image Klein (edit, detailed)",
+        "label": "FLUX.3 Image Klein (detailed)",
         "diffusion": str(M / "diffusion_models/flux3/flux-3-image-klein-UD-Q4_K_XL.gguf"),
-        "vae": str(M / "vae/flux2-vae.safetensors"),
-        "llm": str(M / "text_encoders/qwen3/Qwen3-VL-4B-Instruct-GGUF/Qwen3-VL-4B-Instruct-Q4_K_M.gguf"),
+        "default_te": "qwen3-vl-4b", "default_vae": "flux2",
         "steps": 16, "cfg": 1.0, "family": "flux3",
-        "backend": [],
     },
     "zimage": {
         "label": "Z-Image-Turbo (+LoRA)",
         "diffusion": str(M / "diffusion_models/z-image/z-image-turbo-Q6_K.gguf"),
-        "vae": str(M / "vae/ae.safetensors"),
-        "llm": str(M / "text_encoders/qwen3/Qwen3-4B-Q4_K_M.gguf"),
+        "default_te": "qwen3-4b", "default_vae": "flux1-ae",
         "steps": 8, "cfg": 1.0, "family": "zimage",
-        "backend": ["--backend", "te=cpu,diffusion=vulkan0,vae=vulkan0",
-                    "--params-backend", "te=cpu,diffusion=vulkan0,vae=vulkan0",
-                    "--lora-model-dir", str(M / "loras/z-image")],
     },
     "anima": {
         "label": "Anima (anime base)",
         "diffusion": str(M / "diffusion_models/anima/anima-preview-Q6_K.gguf"),
-        "vae": str(M / "vae/qwen_image_vae.safetensors"),
-        "llm": str(M / "text_encoders/qwen3/qwen_3_06b_base.safetensors"),
+        "default_te": "qwen3-0.6b", "default_vae": "qwen-image",
         "steps": 16, "cfg": 6.0, "family": "anima",
-        "backend": [],
     },
     "wan": {
         "label": "Wan 2.2 TI2V 5B (video)",
         "diffusion": str(M / "diffusion_models/wan/Wan2.2-TI2V-5B-Q5_K_M.gguf"),
-        "vae": str(M / "vae/Wan2.2_VAE.safetensors"),
-        "t5": str(M / "text_encoders/t5/umt5-xxl-encoder-Q4_K_M.gguf"),
+        "default_te": "umt5-xxl", "default_vae": "wan22",
         "steps": 20, "cfg": 6.0, "family": "wan",
-        "backend": ["--backend", "te=cpu,diffusion=vulkan0,vae=vulkan0",
-                    "--params-backend", "te=cpu,diffusion=vulkan0,vae=vulkan0"],
     },
 }
 
@@ -82,10 +86,14 @@ UPSCALERS = {
     "4x-UltraSharp": str(M / "upscale_models/4x-UltraSharp.safetensors"),
 }
 
-NEGATIVE_DEFAULT = ("色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，"
-                    "最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，"
-                    "画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，"
-                    "杂乱的背景，三条腿，背景人很多，倒着走")
+DEFAULT_SETTINGS = {
+    "auto_fit": True,
+    "modules": {
+        "diffusion": {"compute": "auto", "params": "auto"},
+        "te": {"compute": "auto", "params": "auto"},
+        "vae": {"compute": "auto", "params": "auto"},
+    },
+}
 
 
 def _topo(nodes: dict, edges: list) -> list:
@@ -117,12 +125,35 @@ def _incoming(edges: list) -> dict:
     return inc
 
 
+def backend_args(settings: dict) -> list:
+    """Map UI placement settings to --backend / --params-backend."""
+    s = settings or {}
+    if s.get("auto_fit", True):
+        return []
+    mods = s.get("modules") or {}
+    comp, params = [], []
+    for mod in ("te", "diffusion", "vae"):
+        m = mods.get(mod) or {}
+        c = (m.get("compute") or "auto").lower()
+        p = (m.get("params") or "auto").lower()
+        if c in ("vulkan0", "cpu"):
+            comp.append(f"{mod}={c}")
+        if p in ("vulkan0", "cpu", "disk"):
+            params.append(f"{mod}={p}")
+    out = []
+    if comp:
+        out += ["--backend", ",".join(comp)]
+    if params:
+        out += ["--params-backend", ",".join(params)]
+    return out
+
+
 class Job:
     def __init__(self, graph: dict, name: str = ""):
         self.id = uuid.uuid4().hex[:12]
         self.graph = graph
         self.name = name or f"job_{self.id}"
-        self.status = "queued"          # queued|running|done|error|cancelled
+        self.status = "queued"
         self.created = time.time()
         self.started = None
         self.finished = None
@@ -140,8 +171,8 @@ class Job:
         if not line:
             return
         self.log.append(line)
-        if len(self.log) > 4000:
-            del self.log[:1000]
+        if len(self.log) > 20000:
+            del self.log[:5000]
         m = re.search(r"\|\s*(\d+)/(\d+)\s*-\s*([0-9.]+s/it)", line)
         if m:
             cur, total = int(m.group(1)), int(m.group(2))
@@ -159,7 +190,8 @@ class Job:
             "id": self.id, "name": self.name, "status": self.status,
             "created": self.created, "started": self.started, "finished": self.finished,
             "progress": round(self.progress, 3), "progress_text": self.progress_text,
-            "outputs": self.outputs, "error": self.error, "log_tail": self.log[-80:],
+            "outputs": self.outputs, "error": self.error,
+            "log_len": len(self.log), "log_tail": self.log[-120:],
         }
 
 
@@ -168,8 +200,8 @@ class Executor:
         self.jobs = {}
         self.queue = []
         self.current = None
-        self.lock = __import__("threading").Lock()
-        self.worker = __import__("threading").Thread(target=self._loop, daemon=True)
+        self.lock = threading.Lock()
+        self.worker = threading.Thread(target=self._loop, daemon=True)
         self.worker.start()
 
     def submit(self, graph: dict, name: str = "") -> Job:
@@ -219,12 +251,13 @@ class Executor:
                 job.progress = 1.0 if job.status == "done" else job.progress
                 self.current = None
 
-    # ---------- execution ----------
     def _run(self, job: Job):
         graph = job.graph
         nodes = {n["id"]: n for n in graph.get("nodes", [])}
         edges = graph.get("edges", [])
         inc = _incoming(edges)
+        settings = graph.get("settings") or DEFAULT_SETTINGS
+        bargs = backend_args(settings)
         results = {}
         produced = []
 
@@ -241,6 +274,12 @@ class Executor:
                 if preset not in MODELS:
                     raise ValueError(f"unknown model preset {preset}")
                 results[nid] = {"preset": preset}
+            elif typ == "te":
+                key = data.get("file") or "qwen3-4b"
+                results[nid] = {"te": TEXT_ENCODERS.get(key, (key, key))[1]}
+            elif typ == "vae":
+                key = data.get("file") or "flux2"
+                results[nid] = {"vae": VAES.get(key, (key, key))[1]}
             elif typ == "prompt":
                 results[nid] = {"positive": data.get("positive", ""),
                                 "negative": data.get("negative", "")}
@@ -249,14 +288,13 @@ class Executor:
                 if not p or not Path(p).exists():
                     raise ValueError(f"image not found: {p}")
                 results[nid] = {"image": p}
-            elif typ == "sampler":
-                model_src = ins.get("model")
-                prompt_src = ins.get("prompt")
-                ref_src = ins.get("image")
-                preset = results.get(model_src, {}).get("preset", "flux2-4b")
-                prompt = results.get(prompt_src, {})
-                ref = results.get(ref_src, {}).get("image")
-                out = self._run_sampler(job, nid, preset, data, prompt, ref)
+            elif typ in ("image_sampler", "image_ref_sampler", "wan_sampler"):
+                preset = results.get(ins.get("model"), {}).get("preset", "flux2-4b")
+                prompt = results.get(ins.get("prompt"), {})
+                te = results.get(ins.get("te"), {}).get("te")
+                vae = results.get(ins.get("vae"), {}).get("vae")
+                ref = results.get(ins.get("image"), {}).get("image")
+                out = self._run_sampler(job, nid, preset, typ, data, prompt, ref, te, vae, bargs)
                 results[nid] = {"image": out}
                 produced.append(out)
             elif typ == "upscale":
@@ -277,24 +315,30 @@ class Executor:
         if not produced:
             raise ValueError("nothing to generate: connect a Sampler node")
         for p in produced:
-            rel = os.path.relpath(p, OUT)
-            job.outputs.append(rel)
+            job.outputs.append(os.path.relpath(p, OUT))
         job.progress = 1.0
 
-    def _base_cmd(self, preset: str) -> list:
+    def _base_cmd(self, preset: str, te: str | None, vae: str | None, bargs: list) -> list:
         p = MODELS[preset]
-        cmd = [str(BIN), "--diffusion-model", p["diffusion"], "--vae", p["vae"]]
-        if p.get("llm"):
-            cmd += ["--llm", p["llm"]]
-        if p.get("t5"):
-            cmd += ["--t5xxl", p["t5"]]
-        cmd += p.get("backend", [])
+        te_key = p.get("default_te")
+        te_path = te or (TEXT_ENCODERS.get(te_key, (None, te_key))[1] if te_key else None)
+        vae_path = vae or VAES.get(p.get("default_vae"), (None, p.get("default_vae")))[1]
+        cmd = [str(BIN), "--diffusion-model", p["diffusion"], "--vae", str(vae_path)]
+        if te_path:
+            if p["family"] == "wan":
+                cmd += ["--t5xxl", str(te_path)]
+            else:
+                cmd += ["--llm", str(te_path)]
+        cmd += bargs
+        if p["family"] == "zimage":
+            cmd += ["--lora-model-dir", str(M / "loras/z-image")]
         return cmd
 
-    def _run_sampler(self, job: Job, nid: str, preset: str, data: dict,
-                     prompt: dict, ref: str | None) -> str:
+    def _run_sampler(self, job: Job, nid: str, preset: str, typ: str, data: dict,
+                     prompt: dict, ref: str | None, te: str | None, vae: str | None,
+                     bargs: list) -> str:
         p = MODELS[preset]
-        family = p.get("family")
+        family = "wan" if typ == "wan_sampler" else p["family"]
         steps = int(data.get("steps") or p["steps"])
         cfg = float(data.get("cfg") if data.get("cfg") is not None else p["cfg"])
         width = int(data.get("width") or 1024)
@@ -307,13 +351,15 @@ class Executor:
 
         outdir = OUT / job.id
         outdir.mkdir(parents=True, exist_ok=True)
-        cmd = self._base_cmd(preset)
+        cmd = self._base_cmd(preset, te, vae, bargs)
+
         if family == "wan":
             frames = int(data.get("frames") or 33)
             fps = int(data.get("fps") or 16)
+            flow = float(data.get("flow_shift") or 3.0)
             cmd += ["-M", "vid_gen", "-W", str(width), "-H", str(height),
                     "--video-frames", str(frames), "--fps", str(fps),
-                    "--flow-shift", "3.0"]
+                    "--flow-shift", str(flow)]
             out = outdir / f"{nid}.webm"
         else:
             cmd += ["-W", str(width), "-H", str(height)]
@@ -327,27 +373,26 @@ class Executor:
             cmd += ["-p", positive]
         if negative:
             cmd += ["-n", negative]
-        if family in ("flux2", "flux3") and ref:
-            cmd += ["-r", ref]
-        elif ref:
-            cmd += ["-i", ref, "--strength", str(float(data.get("strength") or 0.6))]
+        if ref:
+            if typ == "image_ref_sampler" and family in ("flux2", "flux3"):
+                cmd += ["-r", ref]
+            else:
+                cmd += ["-i", ref, "--strength", str(float(data.get("strength") or 0.6))]
         if width * height > 1_150_000 and family != "wan":
             cmd += ["--vae-tiling", "--vae-tile-size", "512x512"]
         if family == "wan":
             cmd += ["--vae-tiling"]
 
         self._spawn(job, cmd)
-        if family == "wan":
+        if family == "wan" and shutil.which("ffmpeg") and out.exists():
             mp4 = outdir / f"{nid}.mp4"
-            # sd-cli writes webm; transcode if ffmpeg is available
-            if shutil.which("ffmpeg") and out.exists():
-                subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(out),
-                                "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                                "-crf", "18", "-movflags", "+faststart", str(mp4)],
-                               check=False)
-                if mp4.exists():
-                    out.unlink(missing_ok=True)
-                    out = mp4
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(out),
+                            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                            "-crf", "18", "-movflags", "+faststart", str(mp4)],
+                           check=False)
+            if mp4.exists():
+                out.unlink(missing_ok=True)
+                out = mp4
         return str(out)
 
     def _run_upscale(self, job: Job, nid: str, data: dict, src: str) -> str:
