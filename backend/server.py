@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import base64
 import json
+import shutil
+import subprocess
 import mimetypes
 import os
 import re
@@ -181,8 +183,19 @@ class Handler(BaseHTTPRequestHandler):
             if p == "/api/upload":
                 name = re.sub(r"[^A-Za-z0-9_.-]", "_", body.get("name") or "upload.png")
                 data = base64.b64decode(body.get("data") or "")
-                dst = UPLOADS / f"{int(time.time())}_{name}"
-                dst.write_bytes(data)
+                ts = int(time.time() * 1000)
+                tmp = UPLOADS / f"{ts}_{name}"
+                tmp.write_bytes(data)
+                dst = tmp
+                # normalize to PNG: sd.cpp identifies images by extension and
+                # does not read WebP renamed to .jpeg
+                if shutil.which("magick"):
+                    png = UPLOADS / f"{ts}_{Path(name).stem}.png"
+                    r = subprocess.run(["magick", str(tmp), "-strip", str(png)],
+                                       capture_output=True)
+                    if r.returncode == 0 and png.exists():
+                        tmp.unlink(missing_ok=True)
+                        dst = png
                 return self.send_json({"path": str(dst)})
             return self.send_json({"error": "not found"}, 404)
         except Exception as e:  # noqa: BLE001

@@ -16,10 +16,10 @@ body {
 }
 
 .app {
-  height: 100%; display: grid;
-  grid-template-columns: 34px 200px 1fr 380px;
+  height: calc(100% - 30px); display: grid;
+  grid-template-columns: 200px 1fr 380px;
   grid-template-rows: 56px 1fr;
-  grid-template-areas: "top top top top" "rail palette canvas side";
+  grid-template-areas: "top top top" "palette canvas side";
 }
 
 /* top bar */
@@ -45,15 +45,6 @@ body {
 .bar { height: 4px; background: #1c2434; border-radius: 2px; margin-top: 4px; overflow: hidden; }
 .bar i { display: block; height: 100%; background: linear-gradient(90deg, #2f62e8, #6ea8fe); transition: width .4s; }
 
-/* left log rail */
-.rail {
-  grid-area: rail; background: var(--panel2); border-right: 1px solid var(--line);
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding-top: 12px; cursor: pointer; user-select: none;
-}
-.rail:hover { background: #131a28; }
-.rail-icon { font-size: 15px; color: var(--accent); }
-.rail-text { writing-mode: vertical-rl; color: var(--muted); font-size: 10px; letter-spacing: .2em; }
 
 /* palette */
 .palette {
@@ -67,6 +58,15 @@ body {
   cursor: pointer; font: inherit;
 }
 .palette button:hover { border-color: #3a4a66; }
+.pgroup { border: 1px solid var(--line); border-radius: 7px; background: #0c111b; }
+.pgroup summary {
+  cursor: pointer; padding: 7px 9px; color: var(--muted); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .05em; user-select: none;
+}
+.pgroup summary:hover { color: var(--text); }
+.pgroup[open] summary { border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.pgroup button { display: block; width: calc(100% - 12px); margin: 0 6px 6px; }
+.palette-footer { margin-top: auto; display: flex; flex-direction: column; gap: 6px; padding-top: 10px; }
 .error { margin-top: 10px; color: #ff8b8b; font-size: 12px; white-space: pre-wrap; }
 
 /* canvas */
@@ -103,19 +103,14 @@ body {
 .hint { color: #64708a; font-size: 10px; }
 .thumb { width: 100%; border-radius: 5px; border: 1px solid #263043; display: block; }
 
-.portwrap { position: absolute; left: -6px; }
-.portwrap.out { left: auto; right: -6px; }
-.portwrap .port {
-  position: static !important; transform: none !important;
+.portrows { padding: 3px 10px 0; display: flex; flex-direction: column; }
+.portrow { display: flex; justify-content: space-between; align-items: center; }
+.pl { font-size: 9px; color: #6f7d95; line-height: 1; }
+.pl.out { text-align: right; }
+.port {
   width: 9px !important; height: 9px !important;
   background: #0b0f16 !important; border: 2px solid var(--accent) !important;
 }
-.portlabel {
-  position: absolute; top: -4px; white-space: nowrap;
-  font-size: 9px; color: #6f7d95; pointer-events: none;
-}
-.portwrap.in .portlabel { right: 14px; }
-.portwrap.out .portlabel { left: 14px; }
 
 /* context menu */
 .ctx {
@@ -139,12 +134,23 @@ body {
 .outputs { padding: 0 10px 8px; display: flex; flex-direction: column; gap: 8px; overflow: auto; flex: 1; }
 .outputs img, .outputs video { width: 100%; border-radius: 6px; border: 1px solid var(--line); }
 
-/* log drawer */
+/* log bar + bottom terminal */
+.logbar {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 30px; z-index: 50;
+  display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  background: var(--panel); border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 11px; cursor: pointer; user-select: none;
+}
+.logbar:hover { background: #141b2a; }
+.logbar b { color: var(--text); font-size: 11px; letter-spacing: .06em; }
+.logbar .logicon { color: var(--accent); }
+.logbar .chev { margin-left: 4px; }
+.logbar .muted { color: var(--muted); }
 .logpanel {
-  position: fixed; left: 34px; top: 56px; bottom: 0; width: 560px; z-index: 40;
-  background: #0a0e16f2; backdrop-filter: blur(6px);
-  border-right: 1px solid var(--line); display: flex; flex-direction: column;
-  box-shadow: 12px 0 40px #000a;
+  position: fixed; left: 0; right: 0; bottom: 30px; height: 320px; z-index: 45;
+  background: #0a0e16f8; backdrop-filter: blur(6px);
+  border-top: 1px solid var(--line); display: flex; flex-direction: column;
+  box-shadow: 0 -12px 40px #000a;
 }
 .loghead {
   display: flex; align-items: center; gap: 10px; padding: 8px 10px;

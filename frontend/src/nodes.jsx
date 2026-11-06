@@ -3,21 +3,29 @@ import { Handle, Position, useReactFlow } from '@xyflow/react'
 import { ConfigCtx, api } from './state.js'
 
 function Shell({ title, accent, children, inputs = [], outputs = [], width }) {
+  const rows = Math.max(inputs.length, outputs.length)
+  const headH = 31, rowH = 18
   return (
     <div className="node" style={{ '--accent': accent, minWidth: width || 220 }}>
       <div className="node-head">{title}</div>
+      {rows > 0 && (
+        <div className="portrows">
+          {Array.from({ length: rows }).map((_, i) => (
+            <div className="portrow" key={i} style={{ height: rowH }}>
+              <span className="pl in">{inputs[i]?.label || inputs[i]?.id || ''}</span>
+              <span className="pl out">{outputs[i]?.label || outputs[i]?.id || ''}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="node-body">{children}</div>
       {inputs.map((h, i) => (
-        <div key={h.id} className="portwrap" style={{ top: 32 + i * 21 }}>
-          <Handle id={h.id} type="target" position={Position.Left} className="port" />
-          <span className="portlabel in">{h.label || h.id}</span>
-        </div>
+        <Handle key={h.id} id={h.id} type="target" position={Position.Left}
+          className="port" style={{ top: headH + i * rowH + rowH / 2 }} />
       ))}
       {outputs.map((h, i) => (
-        <div key={h.id} className="portwrap out" style={{ top: 32 + i * 21 }}>
-          <Handle id={h.id} type="source" position={Position.Right} className="port" />
-          <span className="portlabel out">{h.label || h.id}</span>
-        </div>
+        <Handle key={h.id} id={h.id} type="source" position={Position.Right}
+          className="port" style={{ top: headH + i * rowH + rowH / 2 }} />
       ))}
     </div>
   )

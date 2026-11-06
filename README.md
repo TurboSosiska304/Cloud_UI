@@ -1,9 +1,9 @@
 # Cloud_UI
 
-Нодовый веб-редактор в духе ComfyUI. Бэкенд — `sd.cpp` (`sd-cli`), всё считается
-локально на этой машине.
+A ComfyUI-style node editor for [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp).
+Everything runs locally; the backend spawns `sd-cli`.
 
-## Запуск
+## Run
 
 ```bash
 cd /home/nik/Projects/opencode/sd_cpp_/Cloud_UI
@@ -11,67 +11,69 @@ cd /home/nik/Projects/opencode/sd_cpp_/Cloud_UI
 # http://127.0.0.1:8188
 ```
 
-Разработка:
+Development:
 
 ```bash
-python3 backend/server.py            # API :8188
-cd frontend && npm run dev           # UI :5173 (proxy на API)
+python3 backend/server.py        # API on :8188
+cd frontend && npm run dev       # UI on :5173 (proxies /api)
 ```
 
-## Ноды
+## Nodes
 
-| Нода | Входы | Выходы | Назначение |
+| Node | Inputs | Outputs | Purpose |
 |---|---|---|---|
-| **Model** | — | model | diffusion-модель (FLUX.2 4B/9B, FLUX.3, Z-Image, Anima, Wan) |
-| **Text Encoder** | — | te | явный TE: Qwen3 4B/8B, Qwen3-VL, 0.6B, UMT5, T5, CLIP-L |
-| **VAE** | — | vae | явный VAE: FLUX.2, FLUX.1 AE, Qwen-Image, Wan 2.2, SD1.5 и др. |
+| **Model** | — | model | diffusion model preset (FLUX.2 4B/9B, FLUX.3, Z-Image, Anima, Wan) |
+| **Text Encoder** | — | te | explicit TE: Qwen3 4B/8B, Qwen3-VL, 0.6B, UMT5, T5, CLIP-L |
+| **VAE** | — | vae | explicit VAE: FLUX.2, FLUX.1 AE, Qwen-Image, Wan 2.2, SD1.5, PixArt, Hunyuan |
 | **Prompt** | — | prompt | positive / negative |
 | **Image Sampler** | model, prompt, te, vae | image | text-to-image |
-| **Image Sampler (ref)** | + image | image | reference/edit (Flux) или img2img + strength |
-| **Wan Sampler** | model, prompt, image, te, vae | video | видео: frames, fps, flow shift |
-| **Load Image** | — | image | путь или загрузка файла |
-| **Upscale** | image | image | ESRGAN: RealESRGAN / 4x-UltraSharp |
-| **Save / Output** | image | — | фиксация результата |
+| **Image Sampler (ref)** | + image | image | Flux reference/edit, or img2img with strength |
+| **Wan Sampler** | model, prompt, image, te, vae | video | frames, fps, flow shift, optional i2v |
+| **Load Image** | — | image | path or upload |
+| **Upscale** | image | image | RealESRGAN / 4x-UltraSharp |
+| **Save / Output** | image | — | marks the result as output |
 
-Если TE/VAE не подключены — берутся дефолты выбранной модели.
+If TE/VAE nodes are not connected, the model preset defaults are used.
 
-## Настройки размещения
+## Placement settings
 
-Кнопка **⚙ Settings**:
+**Settings** (bottom of the node panel):
 
-- **Auto-fit** — sd.cpp сам решает, что держать в VRAM/RAM (по умолчанию).
-- Либо ручной режим по модулям `diffusion / te / vae`:
-  - **Compute**: `GPU (vulkan0)` или `CPU`.
-  - **Weights**: `VRAM`, `RAM` (подгружать на GPU по мере надобности) или `Disk`.
+- **Auto-fit** — sd.cpp decides what to keep in VRAM/RAM (default).
+- Manual per-module (`diffusion`, `te`, `vae`):
+  - **Compute**: GPU (`vulkan0`) or CPU.
+  - **Weights**: VRAM, RAM (loaded to GPU on demand) or Disk.
 
-Это напрямую транслируется в `--backend` и `--params-backend` sd-cli.
+Maps directly to `--backend` / `--params-backend`.
 
-## Прочее
+## UI
 
-- **Правый клик по ноде** → Duplicate / Delete node (или клавиша Delete).
-- **LOG** — узкая панель слева с иконкой терминала; клик открывает/закрывает
-  консоль с живым логом и прогрессом.
-- **Gallery** — отдельное модальное окно с сеткой карточек: превью, размер,
-  Open, Use as input (добавляет Load Image с этим файлом).
-- Воркфлоу сохраняются в `workflows/`, результаты — в `outputs/`.
+- **Right-click a node** → Duplicate / Delete (or press Delete).
+- **LOG** — bottom bar like a VS Code terminal; click to expand the live log.
+- **Gallery** — modal grid with previews, size, Open and "Use as input"
+  (adds a Load Image node with that file).
+- Nodes are grouped in collapsible sections in the left panel.
+- Workflows are stored in `workflows/`, results in `outputs/`.
 
 ## API
 
-- `GET /api/config` — модели, TE, VAE, апскейлеры, дефолтные настройки
-- `POST /api/jobs` — `{graph, name}` → задача
-- `GET /api/jobs/{id}` — статус, прогресс, результаты
-- `GET /api/jobs/{id}/log?since=N` — инкрементальный лог
+- `GET /api/config` — models, text encoders, VAEs, upscalers, defaults
+- `POST /api/jobs` — `{graph, name}` → job
+- `GET /api/jobs/{id}` — status, progress, outputs
+- `GET /api/jobs/{id}/log?since=N` — incremental log
 - `POST /api/jobs/{id}/cancel`
 - `GET /api/outputs`, `/files/<path>`
 - `GET/POST /api/workflows[/{name}]`
-- `POST /api/upload` — `{name, data(base64)}`
+- `POST /api/upload` — `{name, data(base64)}` (normalized to PNG)
 
-## Архитектура
+## Architecture
 
 ```
 frontend (React 19 + @xyflow/react + Vite)
         │ REST
-backend/server.py   (stdlib HTTP, static)
+backend/server.py   (stdlib HTTP, static files)
         │ queue (single GPU worker)
 backend/executor.py → sd-cli (Vulkan)
 ```
+
+See [readme_ru.md](readme_ru.md) for the Russian version.

@@ -229,34 +229,50 @@ export default function App() {
             <option value="">Load workflow…</option>
             {workflows.map((w) => <option key={w.name} value={w.name}>{w.name}</option>)}
           </select>
-          <button onClick={() => setShowSettings(true)} title="Settings">⚙ Settings</button>
-          <button onClick={() => { setShowGallery(true); refreshGallery() }}>Gallery</button>
           <div className="status">
             {job ? `${job.status} ${job.progress_text || ''}` : 'idle'}
             {job && <div className="bar"><i style={{ width: `${(job.progress || 0) * 100}%` }} /></div>}
           </div>
         </header>
 
-        <div className="rail" onClick={() => setShowLog(!showLog)} title="Toggle log">
-          <div className="rail-icon">▣</div>
-          <div className="rail-text">LOG</div>
-        </div>
-
         <aside className="palette">
-          <div className="ptitle">Nodes</div>
-          {[
-            ['model', 'Model'], ['te', 'Text Encoder'], ['vae', 'VAE'], ['prompt', 'Prompt'],
-            ['image_sampler', 'Image Sampler'], ['image_ref_sampler', 'Image Sampler (ref)'],
-            ['wan_sampler', 'Wan Sampler'], ['load_image', 'Load Image'],
-            ['upscale', 'Upscale'], ['save', 'Save'],
-          ].map(([t, label]) => <button key={t} onClick={() => addNode(t)}>+ {label}</button>)}
-          <div className="ptitle">Templates</div>
-          <button onClick={() => applyTemplate('txt2img')}>Txt2Img (fast)</button>
-          <button onClick={() => applyTemplate('quality')}>Txt2Img (FLUX.3)</button>
-          <button onClick={() => applyTemplate('edit')}>Edit (reference)</button>
-          <button onClick={() => applyTemplate('wan')}>Wan video</button>
-          <button onClick={() => applyTemplate('upscale')}>Upscale</button>
+          <details open className="pgroup">
+            <summary>Model &amp; encoders</summary>
+            {[['model', 'Model'], ['te', 'Text Encoder'], ['vae', 'VAE']].map(([t, l]) =>
+              <button key={t} onClick={() => addNode(t)}>+ {l}</button>)}
+          </details>
+          <details open className="pgroup">
+            <summary>Prompt</summary>
+            <button onClick={() => addNode('prompt')}>+ Prompt</button>
+          </details>
+          <details open className="pgroup">
+            <summary>Samplers</summary>
+            {[['image_sampler', 'Image Sampler'], ['image_ref_sampler', 'Image Sampler (ref)'],
+              ['wan_sampler', 'Wan Sampler']].map(([t, l]) =>
+              <button key={t} onClick={() => addNode(t)}>+ {l}</button>)}
+          </details>
+          <details className="pgroup">
+            <summary>Image</summary>
+            {[['load_image', 'Load Image'], ['upscale', 'Upscale']].map(([t, l]) =>
+              <button key={t} onClick={() => addNode(t)}>+ {l}</button>)}
+          </details>
+          <details className="pgroup">
+            <summary>Output</summary>
+            <button onClick={() => addNode('save')}>+ Save</button>
+          </details>
+          <details className="pgroup">
+            <summary>Templates</summary>
+            <button onClick={() => applyTemplate('txt2img')}>Txt2Img (fast)</button>
+            <button onClick={() => applyTemplate('quality')}>Txt2Img (FLUX.3)</button>
+            <button onClick={() => applyTemplate('edit')}>Edit (reference)</button>
+            <button onClick={() => applyTemplate('wan')}>Wan video</button>
+            <button onClick={() => applyTemplate('upscale')}>Upscale</button>
+          </details>
           {error && <div className="error">{error}</div>}
+          <div className="palette-footer">
+            <button onClick={() => setShowSettings(true)}>⚙ Settings</button>
+            <button onClick={() => { setShowGallery(true); refreshGallery() }}>▦ Gallery</button>
+          </div>
         </aside>
 
         <main className="canvas">
@@ -285,12 +301,19 @@ export default function App() {
           )}
         </main>
 
+        <div className="logbar" onClick={() => setShowLog(!showLog)}>
+          <span className="logicon">▣</span>
+          <b>LOG</b>
+          <span className="muted">{job ? `${job.status} · ${job.progress_text || ''}` : 'idle'}</span>
+          <span className="chev">{showLog ? '▾' : '▴'}</span>
+        </div>
         {showLog && (
           <section className="logpanel">
             <div className="loghead">
               <b>LOG</b>
               <span className="muted">{job ? `${job.status} · ${job.progress_text || ''}` : 'idle'}</span>
-              <button onClick={() => setShowLog(false)}>✕</button>
+              <button onClick={(e) => { e.stopPropagation(); setLogs([]) }}>Clear</button>
+              <button onClick={(e) => { e.stopPropagation(); setShowLog(false) }}>✕</button>
             </div>
             <pre className="log" ref={logRef}>{logs.join('\n') || '— пока пусто —'}</pre>
           </section>
